@@ -1,9 +1,11 @@
 var HOST_METADATA = {
+    'github.com': { appId: 472 },
     'rally1.rallydev.com': {
         appId: 399,
         urlTransformer: url => url.replace(/(rally1.rallydev.com\/)#\/\d+/, '$1slm/#')
     }
 };
+var IDENTITY = o => o;
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if(changeInfo.status === 'loading') {
@@ -30,7 +32,7 @@ var ajaxGet = (uri, callback) => {
 };
 
 var fetchChatMessages = ({ appId, urlTransformer }, { id, url }) => {
-    url = urlTransformer(url);
+    url = (urlTransformer || IDENTITY)(url);
 
     ajaxGet('threads?application=' + appId, threads => {
         var thread = threads.find(t => t.external_url === url);
