@@ -8,21 +8,29 @@ var HOST_METADATA = {
 var IDENTITY = o => o;
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-    if(changeInfo.status === 'loading') {
-        setBadgeText('', tabId);
-
-        chrome.tabs.get(tabId, tab => {
-            var metadata = HOST_METADATA[tab.url.replace(/[a-z]+:\/\/([^/]+).*/, '$1')];
-            if(metadata) {
-                fetchChatMessages(metadata, tab);
-            }
-        });
+    if(changeInfo.status !== 'loading') {
+        return;
     }
+
+    setBadgeText('', tabId);
+
+    chrome.storage.sync.get(['apiToken', 'flowUrls'], prefs => {
+        if(prefs.apiToken && prefs.flowUrls) {
+            chrome.tabs.get(tabId, tab => {
+                var metadata = HOST_METADATA[tab.url.replace(/[a-z]+:\/\/([^/]+).*/, '$1')];
+                if(metadata) {
+                    fetchChatMessages(metadata, tab, prefs);
+                }
+            });
+        } else {
+            setBadgeText('!', tabId);
+        }
+    });
 });
 
-var ajaxGet = (uri, callback) => {
+var ajaxGet = (uri, {apiToken, flowUrls}, callback) => {
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', 'https://' + API_KEY + '@api.flowdock.com/flows/' + ORG_FLOW + '/' + uri, true);
+    xhr.open('GET', 'https://' + apiToken + '@api.flowdock.com/flows/' + flowUrls + '/' + uri, true);
     xhr.onreadystatechange = () => {
         if (xhr.readyState == 4) {
             callback(JSON.parse(xhr.responseText));
@@ -31,13 +39,13 @@ var ajaxGet = (uri, callback) => {
     xhr.send();
 };
 
-var fetchChatMessages = ({ appId, urlTransformer }, { id, url }) => {
+var fetchChatMessages = ({ appId, urlTransformer }, { id, url }, prefs) => {
     url = (urlTransformer || IDENTITY)(url);
 
-    ajaxGet('threads?application=' + appId, threads => {
+    ajaxGet('threads?application=' + appId, prefs, threads => {
         var thread = threads.find(t => t.external_url === url);
         if(thread) {
-            ajaxGet('threads/' + thread.id + '/messages?app=chat', messages => {
+            ajaxGet('threads/' + thread.id + '/messages?app=chat', prefs, messages => {
                 setBadgeText(messages.length, id);
             });
         }
