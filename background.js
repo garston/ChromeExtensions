@@ -40,16 +40,20 @@ var ajaxGet = (uri, orgFlow, apiToken, callback) => {
 };
 
 var fetchChatMessages = ({ appId, urlTransformer }, { id, url }, { apiToken, flowUrls }) => {
-    var orgFlow = flowUrls.replace(/https:\/\/www\.flowdock\.com\/app\/([^/]+\/[^/]+).*/, '$1');
     url = (urlTransformer || IDENTITY)(url);
 
-    ajaxGet('threads?application=' + appId, orgFlow, apiToken, threads => {
-        var thread = threads.find(t => t.external_url === url);
-        if(thread) {
-            ajaxGet('threads/' + thread.id + '/messages?app=chat', orgFlow, apiToken, messages => {
-                setBadgeText(messages.length, id);
-            });
-        }
+    var messageCount = 0;
+    flowUrls.split(',').forEach(flowUrl => {
+        var orgFlow = flowUrl.replace(/https:\/\/www\.flowdock\.com\/app\/([^/]+\/[^/]+).*/, '$1');
+        ajaxGet('threads?application=' + appId, orgFlow, apiToken, threads => {
+            var thread = threads.find(t => t.external_url === url);
+            if(thread) {
+                ajaxGet('threads/' + thread.id + '/messages?app=chat', orgFlow, apiToken, messages => {
+                    messageCount += messages.length;
+                    setBadgeText(messageCount, id);
+                });
+            }
+        });
     });
 };
 
