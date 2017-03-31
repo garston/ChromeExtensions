@@ -28,9 +28,9 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     });
 });
 
-var ajaxGet = (uri, {apiToken, flowUrls}, callback) => {
+var ajaxGet = (uri, orgFlow, apiToken, callback) => {
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', 'https://' + apiToken + '@api.flowdock.com/flows/' + flowUrls + '/' + uri, true);
+    xhr.open('GET', 'https://' + apiToken + '@api.flowdock.com/flows/' + orgFlow + '/' + uri, true);
     xhr.onreadystatechange = () => {
         if (xhr.readyState == 4) {
             callback(JSON.parse(xhr.responseText));
@@ -39,13 +39,14 @@ var ajaxGet = (uri, {apiToken, flowUrls}, callback) => {
     xhr.send();
 };
 
-var fetchChatMessages = ({ appId, urlTransformer }, { id, url }, prefs) => {
+var fetchChatMessages = ({ appId, urlTransformer }, { id, url }, { apiToken, flowUrls }) => {
+    var orgFlow = flowUrls.replace(/https:\/\/www\.flowdock\.com\/app\/([^/]+\/[^/]+).*/, '$1');
     url = (urlTransformer || IDENTITY)(url);
 
-    ajaxGet('threads?application=' + appId, prefs, threads => {
+    ajaxGet('threads?application=' + appId, orgFlow, apiToken, threads => {
         var thread = threads.find(t => t.external_url === url);
         if(thread) {
-            ajaxGet('threads/' + thread.id + '/messages?app=chat', prefs, messages => {
+            ajaxGet('threads/' + thread.id + '/messages?app=chat', orgFlow, apiToken, messages => {
                 setBadgeText(messages.length, id);
             });
         }
