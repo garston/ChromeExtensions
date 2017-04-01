@@ -1,0 +1,7 @@
+#messages-table td {
+    border-bottom: 1px solid pink;
+}
+
+#messages-table .fd-link {
+    height: 25px;
+}
