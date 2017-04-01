@@ -51,6 +51,13 @@ var fetchChatMessages = ({ appId, urlTransformer }, { id, url }, { apiToken, flo
                 ajaxGet('threads/' + thread.id + '/messages?app=chat', orgFlow, apiToken, threadMessages => {
                     messages = messages.concat(threadMessages);
                     setState(messages.length, { messages }, id);
+
+                    if(messages.length) {
+                        chrome.storage.sync.get('flowIdsToUrls', ({ flowIdsToUrls = {} }) => {
+                            flowIdsToUrls[messages[0].flow] = flowUrl;
+                            chrome.storage.sync.set({ flowIdsToUrls });
+                        });
+                    }
                 });
             }
         });
