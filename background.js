@@ -12,7 +12,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
         return;
     }
 
-    setBadgeText('', tabId);
+    setState('', {}, tabId);
 
     chrome.storage.sync.get(['apiToken', 'flowUrls'], prefs => {
         if(prefs.apiToken && prefs.flowUrls) {
@@ -23,7 +23,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
                 }
             });
         } else {
-            setBadgeText('!', tabId);
+            setState('!', {error: 'Please setup the Flowdock Chrome Extension from its Options link on the Extensions page'}, tabId);
         }
     });
 });
@@ -42,19 +42,22 @@ var ajaxGet = (uri, orgFlow, apiToken, callback) => {
 var fetchChatMessages = ({ appId, urlTransformer }, { id, url }, { apiToken, flowUrls }) => {
     url = (urlTransformer || IDENTITY)(url);
 
-    var messageCount = 0;
+    var messages = [];
     flowUrls.split(',').forEach(flowUrl => {
         var orgFlow = flowUrl.replace(/https:\/\/www\.flowdock\.com\/app\/([^/]+\/[^/]+).*/, '$1');
         ajaxGet('threads?application=' + appId, orgFlow, apiToken, threads => {
             var thread = threads.find(t => t.external_url === url);
             if(thread) {
-                ajaxGet('threads/' + thread.id + '/messages?app=chat', orgFlow, apiToken, messages => {
-                    messageCount += messages.length;
-                    setBadgeText(messageCount, id);
+                ajaxGet('threads/' + thread.id + '/messages?app=chat', orgFlow, apiToken, threadMessages => {
+                    messages = messages.concat(threadMessages);
+                    setState(messages.length, { messages }, id);
                 });
             }
         });
     });
 };
 
-var setBadgeText = (text, tabId) => chrome.browserAction.setBadgeText({ tabId, text: '' + text });
+var setState = (badgeText, data, tabId) => {
+    chrome.browserAction.setBadgeText({ tabId, text: '' + badgeText });
+    chrome.storage.sync.set({ [getDataStorageKey(tabId)]: data });
+};
