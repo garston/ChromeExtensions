@@ -1,13 +1,17 @@
 document.addEventListener('DOMContentLoaded', () => {
     chrome.tabs.query({ active: true, currentWindow: true }, ([{id}]) => {
-        getData(id, ({ messages = [] } = {}) => {
-            displayMessages(messages);
+        getData(id, ({ error, messages } = {}) => {
+            if(error) {
+                setHeader(error);
+            } else {
+                displayMessages(messages);
+            }
         });
     });
 });
 
-var displayMessages = messages => {
-    document.getElementById('messages-header').innerHTML = `There are ${messages.length} message(s) about this page in Flowdock!`;
+var displayMessages = (messages = []) => {
+    setHeader(`There are ${messages.length} message(s) about this page in Flowdock!`);
 
     if(messages.length) {
         chrome.storage.sync.get('flowIdsToUrls', ({flowIdsToUrls}) => {
@@ -17,3 +21,5 @@ var displayMessages = messages => {
         });
     }
 };
+
+var setHeader = html => document.getElementById('header').innerHTML = html;
