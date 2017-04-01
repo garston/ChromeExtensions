@@ -18,10 +18,7 @@
         chrome.storage.sync.get(['apiToken', 'flowUrls'], prefs => {
             if(prefs.apiToken && prefs.flowUrls) {
                 chrome.tabs.get(tabId, tab => {
-                    var metadata = HOST_METADATA[tab.url.replace(/[a-z]+:\/\/([^/]+).*/, '$1')];
-                    if(metadata) {
-                        fetchChatMessages(metadata, tab, prefs);
-                    }
+                    fetchChatMessages(tab, prefs);
                 });
             } else {
                 setState('!', {error: 'Please setup the Flowdock Chrome Extension from its Options link on the Extensions page'}, tabId);
@@ -40,29 +37,39 @@
         xhr.send();
     };
 
-    var fetchChatMessages = ({ appId, urlTransformer }, { id, url }, { apiToken, flowUrls }) => {
-        url = (urlTransformer || IDENTITY)(url);
+    var fetchChatMessages = ({ id, url }, { apiToken, flowUrls }) => {
+        var { appId, urlTransformer } = HOST_METADATA[url.replace(/[a-z]+:\/\/([^/]+).*/, '$1')] || {};
 
         var messages = [];
         flowUrls.split(',').forEach(flowUrl => {
             var orgFlow = flowUrl.replace(/https:\/\/www\.flowdock\.com\/app\/([^/]+\/[^/]+).*/, '$1');
-            ajaxGet('threads?application=' + appId, orgFlow, apiToken, threads => {
-                var thread = threads.find(t => t.external_url === url);
-                if(thread) {
-                    ajaxGet('threads/' + thread.id + '/messages?app=chat', orgFlow, apiToken, threadMessages => {
-                        messages = messages.concat(threadMessages);
-                        setState(messages.length, { messages }, id);
 
-                        if(messages.length) {
-                            chrome.storage.sync.get('flowIdsToUrls', ({ flowIdsToUrls = {} }) => {
-                                flowIdsToUrls[messages[0].flow] = flowUrl;
-                                chrome.storage.sync.set({ flowIdsToUrls });
-                            });
-                        }
-                    });
-                }
-            });
+            if(appId) {
+                ajaxGet('threads?application=' + appId, orgFlow, apiToken, threads => {
+                    var transformedUrl = (urlTransformer || IDENTITY)(url);
+                    var thread = threads.find(t => t.external_url === transformedUrl);
+                    if(thread) {
+                        ajaxGet('threads/' + thread.id + '/messages?app=chat', orgFlow, apiToken, threadMessages => onThreadMessagesReceived(threadMessages, messages, flowUrl, id));
+                    }
+                });
+            } else {
+                ajaxGet('messages?search=' + url, orgFlow, apiToken, threadMessages => {
+                    onThreadMessagesReceived(threadMessages.filter(m => m.content.includes(url)), messages, flowUrl, id);
+                });
+            }
         });
+    };
+
+    var onThreadMessagesReceived = (threadMessages, messages, flowUrl, tabId) => {
+        threadMessages.forEach(m => messages.push(m));
+        setState(messages.length, { messages }, tabId);
+
+        if(threadMessages.length) {
+            chrome.storage.sync.get({flowIdsToUrls: {}}, ({ flowIdsToUrls }) => {
+                flowIdsToUrls[threadMessages[0].flow] = flowUrl;
+                chrome.storage.sync.set({ flowIdsToUrls });
+            });
+        }
     };
 
     var setState = (badgeText, data, tabId) => {
