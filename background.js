@@ -26,9 +26,9 @@
         });
     });
 
-    var ajaxGet = (uri, orgFlow, apiToken, callback) => {
+    var ajaxGet = (uri, apiToken, callback) => {
         var xhr = new XMLHttpRequest();
-        xhr.open('GET', 'https://' + apiToken + '@api.flowdock.com/flows/' + orgFlow + '/' + uri, true);
+        xhr.open('GET', `https://${apiToken}@api.flowdock.com/${uri}`, true);
         xhr.onreadystatechange = () => {
             if (xhr.readyState == 4) {
                 callback(JSON.parse(xhr.responseText));
@@ -45,15 +45,15 @@
             var orgFlow = flowUrl.replace(/https:\/\/www\.flowdock\.com\/app\/([^/]+\/[^/]+).*/, '$1');
 
             if(appId) {
-                ajaxGet('threads?application=' + appId, orgFlow, apiToken, threads => {
+                ajaxGet(`flows/${orgFlow}/threads?application=${appId}`, apiToken, threads => {
                     var transformedUrl = (urlTransformer || IDENTITY)(url);
                     var thread = threads.find(t => t.external_url === transformedUrl);
                     if(thread) {
-                        ajaxGet('threads/' + thread.id + '/messages?app=chat', orgFlow, apiToken, threadMessages => onThreadMessagesReceived(threadMessages, messages, flowUrl, id));
+                        ajaxGet(`flows/${orgFlow}/threads/${thread.id}/messages?app=chat`, apiToken, threadMessages => onThreadMessagesReceived(threadMessages, messages, flowUrl, id));
                     }
                 });
             } else {
-                ajaxGet('messages?search=' + url, orgFlow, apiToken, threadMessages => {
+                ajaxGet(`flows/${orgFlow}/messages?search=${url}`, apiToken, threadMessages => {
                     onThreadMessagesReceived(threadMessages.filter(m => m.content.includes(url)), messages, flowUrl, id);
                 });
             }

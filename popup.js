@@ -1,7 +1,8 @@
 (function(){
     document.addEventListener('DOMContentLoaded', () => {
         chrome.tabs.query({ active: true, currentWindow: true }, ([{id}]) => {
-            getData(id, ({ error, messages } = {}) => {
+            chrome.storage.sync.get(getDataStorageKey(id), obj => {
+                var { error, messages } = obj[getDataStorageKey(id)];
                 if(error) {
                     setHeader(error);
                 } else {
