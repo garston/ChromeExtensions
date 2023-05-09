@@ -1,4 +1,6 @@
 (() => {
+    const scriptUrl = '';
+
     const alarmName = "PhysEd";
     chrome.alarms.create(alarmName, {
         delayInMinutes: 0,
@@ -8,11 +10,13 @@
         if (alarm.name === alarmName) {
             chrome.tabs.query({url: 'https://app.slack.com/*'}, tabs => {
                 tabs.forEach(tab => {
-                    chrome.scripting.executeScript({
-                        args: [['a', 'b', 'c'], 0],
-                        func: sendMsg,
-                        target: {tabId: tab.id}
-                    })
+                    fetch(`${scriptUrl}?slackUrl=${tab.url}`).then(res => res.json()).then(msgs => {
+                        chrome.scripting.executeScript({
+                            args: [msgs, 0],
+                            func: sendMsg,
+                            target: {tabId: tab.id}
+                        });
+                    });
                 });
             });
         }
