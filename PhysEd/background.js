@@ -13,6 +13,8 @@
 
         chrome.tabs.query({url: 'https://app.slack.com/*'}, async (tabs) => {
             for (const tab of tabs) {
+                await chrome.tabs.update(tab.id, {active: true}); // new messages aren't rendered until Slack has focus
+
                 const channelUrl = tab.url.split('/').slice(0, 6).join('/');
                 const channelId = channelUrl.split('/').slice(-1)[0];
                 const thread = (await new Promise(resolve => chrome.scripting.executeScript({
