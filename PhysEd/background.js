@@ -6,26 +6,28 @@
     });
     chrome.alarms.onAlarm.addListener(alarm => {
         if (alarm.name === alarmName) {
-            chrome.tabs.query({url: 'https://app.slack.com/*'}, tabs => {
-                tabs.forEach(tab => {
-                    chrome.scripting.executeScript({
+            chrome.tabs.query({url: 'https://app.slack.com/*'}, async (tabs) => {
+                for (const tab of tabs) {
+                    const channelUrl = tab.url.split('/').slice(0, 6).join('/');
+                    const thread = (await new Promise(resolve => chrome.scripting.executeScript({
+                        args: [channelUrl, channelUrl.split('/').slice(-1)[0]],
                         func: executeInSlack,
                         target: {tabId: tab.id}
-                    });
-                });
+                    }, resolve)))[0].result;
+                    console.log(thread);
+                }
             });
         }
     });
 
-    async function executeInSlack() {
-        const allowBrowserRender = (seconds = 0) => new Promise(resolve => setTimeout(resolve, seconds * 1000));
+    function executeInSlack(channelUrl, channelId) {
         const getMsgCt = msg => msg.closest('.c-virtual_list__item');
-        const getMsgFrom = msg => getMsgCt(msg).querySelector(selectorQa('message_sender_name')).textContent;
+        const getMsgFrom = msg => getMsgCt(msg).querySelector('[data-qa="message_sender_name"]').textContent;
+        const getMsgId = msg => getMsgCt(msg).getAttribute('data-item-key');
         const querySelectorAll = selector => [...document.querySelectorAll(selector)];
-        const selectorQa = dataQa => `[data-qa="${dataQa}"]`;
 
         const selectorMsg = '.c-message_kit__blocks';
-        const [threadStarter] = querySelectorAll(selectorMsg).filter(msg =>
+        const [threadStarter] = querySelectorAll(`.p-workspace__primary_view ${selectorMsg}`).filter(msg =>
             msg.textContent.startsWith('Reminder: PhysEd - ') &&
             getMsgFrom(msg) === 'Slackbot' &&
             ['Today', 'Yesterday'].some(day => getMsgCt(msg).querySelector('.c-timestamp').getAttribute('aria-label').startsWith(`${day} at `))
@@ -34,16 +36,20 @@
             return;
         }
 
-        threadStarter.dispatchEvent(new MouseEvent('mouseover', {'bubbles': true}));
-        getMsgCt(threadStarter).querySelector(selectorQa('start_thread')).click();
-        await allowBrowserRender(4);
+        const threadId = getMsgId(threadStarter);
+        const threadUrl = `${channelUrl}/thread/${channelId}-${threadId}`;
+        if (window.location.href !== threadUrl) {
+            window.location.href = threadUrl;
+            return;
+        }
 
-        const threadMsgs = querySelectorAll(`.p-workspace__secondary_view ${selectorMsg}`).map(msg => ({
-            from: getMsgFrom(msg),
-            id: getMsgCt(msg).getAttribute('data-item-key'),
-            text: msg.textContent
-        }));
-        document.querySelector(selectorQa('close_flexpane')).click();
-        console.log(threadMsgs);
+        return {
+            id: threadId,
+            messages: querySelectorAll(`.p-workspace__secondary_view ${selectorMsg}`).map(msg => ({
+                from: getMsgFrom(msg),
+                id: getMsgId(msg),
+                text: msg.textContent
+            }))
+        };
     }
 })();
