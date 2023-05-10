@@ -1,23 +1,39 @@
 (() => {
+    const channelThreads = {};
+
     const alarmName = "PhysEd";
     chrome.alarms.create(alarmName, {
         delayInMinutes: 0,
         periodInMinutes: 1
     });
     chrome.alarms.onAlarm.addListener(alarm => {
-        if (alarm.name === alarmName) {
-            chrome.tabs.query({url: 'https://app.slack.com/*'}, async (tabs) => {
-                for (const tab of tabs) {
-                    const channelUrl = tab.url.split('/').slice(0, 6).join('/');
-                    const thread = (await new Promise(resolve => chrome.scripting.executeScript({
-                        args: [channelUrl, channelUrl.split('/').slice(-1)[0]],
-                        func: executeInSlack,
-                        target: {tabId: tab.id}
-                    }, resolve)))[0].result;
-                    console.log(thread);
-                }
-            });
+        if (alarm.name !== alarmName) {
+            return;
         }
+
+        chrome.tabs.query({url: 'https://app.slack.com/*'}, async (tabs) => {
+            for (const tab of tabs) {
+                const channelUrl = tab.url.split('/').slice(0, 6).join('/');
+                const channelId = channelUrl.split('/').slice(-1)[0];
+                const thread = (await new Promise(resolve => chrome.scripting.executeScript({
+                    args: [channelUrl, channelId],
+                    func: executeInSlack,
+                    target: {tabId: tab.id}
+                }, resolve)))[0].result;
+
+                const existingThread = channelThreads[channelId];
+                if (!thread) {
+                    delete channelThreads[channelId];
+                } else if (existingThread?.id !== thread.id) {
+                    channelThreads[channelId] = thread;
+                } else {
+                    const newMessagesIndex = existingThread.messages.findIndex(m => m.id === thread.messages[0].id);
+                    existingThread.messages = [...existingThread.messages.slice(0, newMessagesIndex === -1 ? undefined : newMessagesIndex), ...thread.messages];
+                }
+            }
+
+            console.log(channelThreads);
+        });
     });
 
     function executeInSlack(channelUrl, channelId) {
