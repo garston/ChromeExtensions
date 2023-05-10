@@ -1,11 +1,16 @@
 {
-  "manifest_version": 3,
-  "name": "PhysEd Chrome extension",
-  "version": "1.0",
-
   "background": {
     "service_worker": "background.js"
   },
-  "host_permissions": ["https://app.slack.com/*"],
-  "permissions": ["alarms","scripting", "tabs"]
+  "host_permissions": [
+    "https://app.slack.com/*"
+  ],
+  "manifest_version": 3,
+  "name": "PhysEd Chrome extension",
+  "permissions": [
+    "alarms",
+    "scripting",
+    "tabs"
+  ],
+  "version": "1.0"
 }
