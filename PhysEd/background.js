@@ -28,16 +28,16 @@
             const reminderMsgPrefix = `Reminder: ${scriptMsgPrefix}`;
             const selectorThreadPane = '.p-workspace__secondary_view';
 
-            const threads = [];
+            const slackThreads = [];
             for (const tab of tabs) {
                 const channelUrl = tab.url.split('/').slice(0, 6).join('/');
-                threads.push(await executeScript(tab, slackGetThread, [channelUrl, {
+                slackThreads.push(await executeScript(tab, slackGetThread, [channelUrl, {
                     reminderMsgPrefix,
                     selectorThreadPane
                 }]));
             }
 
-            const threadMsgs = threads.map(t => {
+            const fullyHydratedThreads = slackThreads.map(t => {
                 if (!t) {
                     return;
                 }
@@ -51,17 +51,20 @@
 
                 if (messages[0].id === t.id) {
                     cachedThreadMsgs[t.id] = messages;
-                    return messages;
+                    return {
+                        ...t,
+                        messages
+                    };
                 }
             });
 
-            if (threadMsgs.some(msgs => !msgs)) {
-                console.log('not all messages available', threads, threadMsgs);
+            if (fullyHydratedThreads.some(t => !t || t.startedOn !== fullyHydratedThreads[0].startedOn)) {
+                console.log('threads not valid', slackThreads, fullyHydratedThreads);
                 return;
             }
 
             const statusArrayByName = {};
-            threadMsgs.flat().filter(msg => ![reminderMsgPrefix, scriptMsgPrefix].some(prefix => msg.text.startsWith(prefix))).forEach(msg => {
+            fullyHydratedThreads.map(t => t.messages).flat().filter(msg => ![reminderMsgPrefix, scriptMsgPrefix].some(prefix => msg.text.startsWith(prefix))).forEach(msg => {
                 const newStatus = msg.text.trim().replace(/\s|&nbsp;/gi, ' ').replace(/\u200B/g, '').split(' ').reduce((playerStatusArray, word, index, words) => {
                     let status;
                     if (/^in\W*$/i.test(word)) {
@@ -121,6 +124,7 @@
 
     function slackGetThread(channelUrl, consts) {
         const getMsgCt = msg => msg.closest('.c-virtual_list__item');
+        const getMsgDay = msg => getMsgCt(msg).querySelector('.c-timestamp').getAttribute('aria-label').split(' ')[0];
         const getMsgFrom = msg => getMsgCt(msg).querySelector('[data-qa="message_sender_name"]').textContent;
         const getMsgId = msg => getMsgCt(msg).getAttribute('data-item-key');
         const querySelectorAll = selector => [...document.querySelectorAll(selector)];
@@ -129,7 +133,7 @@
         const [threadStarter] = querySelectorAll(`.p-workspace__primary_view ${selectorMsg}`).filter(msg =>
             msg.textContent.startsWith(consts.reminderMsgPrefix) &&
             getMsgFrom(msg) === 'Slackbot' &&
-            ['Today', 'Yesterday'].some(day => getMsgCt(msg).querySelector('.c-timestamp').getAttribute('aria-label').startsWith(`${day} at `))
+            ['Today', 'Yesterday'].includes(getMsgDay(msg))
         ).slice(-1);
         if (!threadStarter) {
             return;
@@ -149,7 +153,8 @@
                 from: getMsgFrom(msg),
                 id: getMsgId(msg),
                 text: msg.textContent
-            }))
+            })),
+            startedOn: getMsgDay(threadStarter)
         };
     }
 
