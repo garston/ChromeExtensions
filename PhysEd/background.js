@@ -128,9 +128,10 @@
         }
 
         const id = getMsgId(threadStarter);
-        const threadUrl = `${channelUrl}/thread/${channelUrl.split('/').slice(-1)[0]}-${id}`;
-        if (window.location.href !== threadUrl) {
-            window.location.href = threadUrl;
+        if (window.location.href !== `${channelUrl}/thread/${channelUrl.split('/').slice(-1)[0]}-${id}`) {
+            // need to navigate to thread by clicking b/c setting window.location.href will cause Slack to redirect to channel URL when thread has no messages
+            threadStarter.dispatchEvent(new MouseEvent('mouseover', {'bubbles': true}));
+            getMsgCt(threadStarter).querySelector('[data-qa="start_thread"]').click();
             return;
         }
 
