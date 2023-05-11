@@ -1,6 +1,18 @@
 (() => {
     const channelThreads = {};
 
+    const statusIn = 'in';
+    const statusMaybe = 'maybe';
+    const statusOut = 'out';
+    const statusUnknown = 'unknown';
+    const emptyStatusNamesObj = () => ({
+        [statusIn]: [],
+        [statusMaybe]: [],
+        [statusOut]: [],
+        [statusUnknown]: []
+    });
+    let statusNames = emptyStatusNamesObj();
+
     const scriptName = 'PhysEd';
     chrome.alarms.create(scriptName, {
         delayInMinutes: 0,
@@ -12,18 +24,16 @@
         }
 
         chrome.tabs.query({url: 'https://app.slack.com/*'}, async (tabs) => {
-            const scriptMsgPrefix = `${scriptName} - `
+            const scriptMsgPrefix = `${scriptName} -`
             const reminderMsgPrefix = `Reminder: ${scriptMsgPrefix}`;
+            const selectorThreadPane = '.p-workspace__secondary_view';
 
             for (const tab of tabs) {
-                await chrome.tabs.update(tab.id, {active: true}); // new messages aren't rendered until Slack has focus
-
                 const channelUrl = tab.url.split('/').slice(0, 6).join('/');
-                const thread = (await new Promise(resolve => chrome.scripting.executeScript({
-                    args: [channelUrl, reminderMsgPrefix],
-                    func: slackGetThread,
-                    target: {tabId: tab.id}
-                }, resolve)))[0].result;
+                const thread = await executeScript(tab, slackGetThread, [channelUrl, {
+                    reminderMsgPrefix,
+                    selectorThreadPane
+                }]);
 
                 const existingThread = channelThreads[channelUrl];
                 if (!thread) {
@@ -47,11 +57,11 @@
                 const newStatus = msg.text.trim().replace(/\s|&nbsp;/gi, ' ').replace(/\u200B/g, '').split(' ').reduce((playerStatusArray, word, index, words) => {
                     let status;
                     if (/^in\W*$/i.test(word)) {
-                        status = 'in';
+                        status = statusIn;
                     } else if (/^(maybe|50\W?50)\W*$/i.test(word)) {
-                        status = 'maybe';
+                        status = statusMaybe;
                     } else if (/^out\W*$/i.test(word)) {
-                        status = 'out';
+                        status = statusOut;
                     } else {
                         return playerStatusArray;
                     }
@@ -71,13 +81,37 @@
                     return playerStatusArray || (!isPhraseForOtherPlayer && status);
                 }, null);
 
-                statusArrayByName[msg.from] = newStatus || statusArrayByName[msg.from] || 'unknown';
+                statusArrayByName[msg.from] = newStatus || statusArrayByName[msg.from] || statusUnknown;
             });
-            console.log(channelThreads, statusArrayByName);
+
+            const newStatusNames = emptyStatusNamesObj();
+            Object.keys(statusArrayByName).sort().forEach(name => newStatusNames[statusArrayByName[name]].push(name));
+
+            if (JSON.stringify(statusNames) !== JSON.stringify(newStatusNames)) {
+                for (const tab of tabs) {
+                    const statusNamesStrings = Object.entries(newStatusNames).
+                        filter(([_, names]) => names.length).
+                        map(([status, names]) => `${status} (${names.length}): ${names.join(', ')}`);
+                    const statusMsg = [scriptMsgPrefix, ...statusNamesStrings].map(msgLine => `<p>${msgLine}</p>`).join('');
+
+                    await executeScript(tab, slackSendMsg, [statusMsg, {selectorThreadPane}]);
+                }
+
+                statusNames = newStatusNames;
+            }
         });
     });
 
-    function slackGetThread(channelUrl, reminderMsgPrefix) {
+    async function executeScript(tab, func, args) {
+        await chrome.tabs.update(tab.id, {active: true}); // new messages aren't rendered until Slack has focus
+        return (await new Promise(resolve => chrome.scripting.executeScript({
+            args,
+            func,
+            target: {tabId: tab.id}
+        }, resolve)))[0].result;
+    }
+
+    function slackGetThread(channelUrl, consts) {
         const getMsgCt = msg => msg.closest('.c-virtual_list__item');
         const getMsgFrom = msg => getMsgCt(msg).querySelector('[data-qa="message_sender_name"]').textContent;
         const getMsgId = msg => getMsgCt(msg).getAttribute('data-item-key');
@@ -85,7 +119,7 @@
 
         const selectorMsg = '.c-message_kit__blocks';
         const [threadStarter] = querySelectorAll(`.p-workspace__primary_view ${selectorMsg}`).filter(msg =>
-            msg.textContent.startsWith(reminderMsgPrefix) &&
+            msg.textContent.startsWith(consts.reminderMsgPrefix) &&
             getMsgFrom(msg) === 'Slackbot' &&
             ['Today', 'Yesterday'].some(day => getMsgCt(msg).querySelector('.c-timestamp').getAttribute('aria-label').startsWith(`${day} at `))
         ).slice(-1);
@@ -93,20 +127,26 @@
             return;
         }
 
-        const threadId = getMsgId(threadStarter);
-        const threadUrl = `${channelUrl}/thread/${channelUrl.split('/').slice(-1)[0]}-${threadId}`;
+        const id = getMsgId(threadStarter);
+        const threadUrl = `${channelUrl}/thread/${channelUrl.split('/').slice(-1)[0]}-${id}`;
         if (window.location.href !== threadUrl) {
             window.location.href = threadUrl;
             return;
         }
 
         return {
-            id: threadId,
-            messages: querySelectorAll(`.p-workspace__secondary_view ${selectorMsg}`).map(msg => ({
+            id,
+            messages: querySelectorAll(`${consts.selectorThreadPane} ${selectorMsg}`).map(msg => ({
                 from: getMsgFrom(msg),
                 id: getMsgId(msg),
                 text: msg.textContent
             }))
         };
+    }
+
+    async function slackSendMsg(msg, consts) {
+        document.querySelector(`${consts.selectorThreadPane} .ql-editor`).innerHTML = msg;
+        await new Promise(resolve => setTimeout(resolve));
+        document.querySelector('[aria-label="Send reply"]').click();
     }
 })();
