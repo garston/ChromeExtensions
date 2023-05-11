@@ -19,18 +19,17 @@
                 await chrome.tabs.update(tab.id, {active: true}); // new messages aren't rendered until Slack has focus
 
                 const channelUrl = tab.url.split('/').slice(0, 6).join('/');
-                const channelId = channelUrl.split('/').slice(-1)[0];
                 const thread = (await new Promise(resolve => chrome.scripting.executeScript({
-                    args: [channelUrl, channelId, reminderMsgPrefix],
-                    func: executeInSlack,
+                    args: [channelUrl, reminderMsgPrefix],
+                    func: slackGetThread,
                     target: {tabId: tab.id}
                 }, resolve)))[0].result;
 
-                const existingThread = channelThreads[channelId];
+                const existingThread = channelThreads[channelUrl];
                 if (!thread) {
-                    delete channelThreads[channelId];
+                    delete channelThreads[channelUrl];
                 } else if (existingThread?.id !== thread.id) {
-                    channelThreads[channelId] = thread;
+                    channelThreads[channelUrl] = thread;
                 } else {
                     const newMessagesIndex = existingThread.messages.findIndex(m => m.id === thread.messages[0].id);
                     existingThread.messages = [...existingThread.messages.slice(0, newMessagesIndex === -1 ? undefined : newMessagesIndex), ...thread.messages];
@@ -74,11 +73,11 @@
 
                 statusArrayByName[msg.from] = newStatus || statusArrayByName[msg.from] || 'unknown';
             });
-            console.log(statusArrayByName);
+            console.log(channelThreads, statusArrayByName);
         });
     });
 
-    function executeInSlack(channelUrl, channelId, reminderMsgPrefix) {
+    function slackGetThread(channelUrl, reminderMsgPrefix) {
         const getMsgCt = msg => msg.closest('.c-virtual_list__item');
         const getMsgFrom = msg => getMsgCt(msg).querySelector('[data-qa="message_sender_name"]').textContent;
         const getMsgId = msg => getMsgCt(msg).getAttribute('data-item-key');
@@ -95,7 +94,7 @@
         }
 
         const threadId = getMsgId(threadStarter);
-        const threadUrl = `${channelUrl}/thread/${channelId}-${threadId}`;
+        const threadUrl = `${channelUrl}/thread/${channelUrl.split('/').slice(-1)[0]}-${threadId}`;
         if (window.location.href !== threadUrl) {
             window.location.href = threadUrl;
             return;
