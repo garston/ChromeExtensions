@@ -1,6 +1,4 @@
 (() => {
-    const channelThreads = {};
-
     const statusIn = 'in';
     const statusMaybe = 'maybe';
     const statusOut = 'out';
@@ -11,7 +9,9 @@
         [statusOut]: [],
         [statusUnknown]: []
     });
-    let statusNames = emptyStatusNamesObj();
+    let cachedStatusNames = emptyStatusNamesObj();
+
+    const cachedThreadMsgs = {};
 
     const scriptName = 'PhysEd';
     chrome.alarms.create(scriptName, {
@@ -28,32 +28,40 @@
             const reminderMsgPrefix = `Reminder: ${scriptMsgPrefix}`;
             const selectorThreadPane = '.p-workspace__secondary_view';
 
+            const threads = [];
             for (const tab of tabs) {
                 const channelUrl = tab.url.split('/').slice(0, 6).join('/');
-                const thread = await executeScript(tab, slackGetThread, [channelUrl, {
+                threads.push(await executeScript(tab, slackGetThread, [channelUrl, {
                     reminderMsgPrefix,
                     selectorThreadPane
-                }]);
-
-                const existingThread = channelThreads[channelUrl];
-                if (!thread) {
-                    delete channelThreads[channelUrl];
-                } else if (existingThread?.id !== thread.id) {
-                    channelThreads[channelUrl] = thread;
-                } else {
-                    const newMessagesIndex = existingThread.messages.findIndex(m => m.id === thread.messages[0].id);
-                    existingThread.messages = [...existingThread.messages.slice(0, newMessagesIndex === -1 ? undefined : newMessagesIndex), ...thread.messages];
-                }
+                }]));
             }
 
-            const missingMessages = Object.entries(channelThreads).filter(([_, t]) => t.id !== t.messages[0].id);
-            if (missingMessages.length) {
-                console.log('missing messages', missingMessages);
-                throw '';
+            const threadMsgs = threads.map(t => {
+                if (!t) {
+                    return;
+                }
+
+                const existingMsgs = cachedThreadMsgs[t.id];
+                let {messages} = t;
+                if (existingMsgs) {
+                    const newMsgsIndex = existingMsgs.findIndex(m => m.id === messages[0].id);
+                    messages = [...existingMsgs.slice(0, newMsgsIndex === -1 ? undefined : newMsgsIndex), ...messages];
+                }
+
+                if (messages[0].id === t.id) {
+                    cachedThreadMsgs[t.id] = messages;
+                    return messages;
+                }
+            });
+
+            if (threadMsgs.some(msgs => !msgs)) {
+                console.log('not all messages available', threads, threadMsgs);
+                return;
             }
 
             const statusArrayByName = {};
-            Object.values(channelThreads).map(t => t.messages).flat().filter(msg => ![reminderMsgPrefix, scriptMsgPrefix].some(prefix => msg.text.startsWith(prefix))).forEach(msg => {
+            threadMsgs.flat().filter(msg => ![reminderMsgPrefix, scriptMsgPrefix].some(prefix => msg.text.startsWith(prefix))).forEach(msg => {
                 const newStatus = msg.text.trim().replace(/\s|&nbsp;/gi, ' ').replace(/\u200B/g, '').split(' ').reduce((playerStatusArray, word, index, words) => {
                     let status;
                     if (/^in\W*$/i.test(word)) {
@@ -84,12 +92,12 @@
                 statusArrayByName[msg.from] = newStatus || statusArrayByName[msg.from] || statusUnknown;
             });
 
-            const newStatusNames = emptyStatusNamesObj();
-            Object.keys(statusArrayByName).sort().forEach(name => newStatusNames[statusArrayByName[name]].push(name));
+            const statusNames = emptyStatusNamesObj();
+            Object.keys(statusArrayByName).sort().forEach(name => statusNames[statusArrayByName[name]].push(name));
 
-            if (JSON.stringify(statusNames) !== JSON.stringify(newStatusNames)) {
+            if (JSON.stringify(cachedStatusNames) !== JSON.stringify(statusNames)) {
                 for (const tab of tabs) {
-                    const statusNamesStrings = Object.entries(newStatusNames).
+                    const statusNamesStrings = Object.entries(statusNames).
                         filter(([_, names]) => names.length).
                         map(([status, names]) => `${status} (${names.length}): ${names.join(', ')}`);
                     const statusMsg = [scriptMsgPrefix, ...statusNamesStrings].map(msgLine => `<p>${msgLine}</p>`).join('');
@@ -97,7 +105,7 @@
                     await executeScript(tab, slackSendMsg, [statusMsg, {selectorThreadPane}]);
                 }
 
-                statusNames = newStatusNames;
+                cachedStatusNames = statusNames;
             }
         });
     });
