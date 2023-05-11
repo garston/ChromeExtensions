@@ -44,7 +44,7 @@
 
             const statusArrayByName = {};
             Object.values(channelThreads).map(t => t.messages).flat().filter(msg => ![reminderMsgPrefix, scriptMsgPrefix].some(prefix => msg.text.startsWith(prefix))).forEach(msg => {
-                const newStatus = msg.text.split(' ').reduce(function (playerStatusArray, word, index, words) {
+                const newStatus = msg.text.trim().replace(/\s|&nbsp;/gi, ' ').replace(/\u200B/g, '').split(' ').reduce((playerStatusArray, word, index, words) => {
                     let status;
                     if (/^in\W*$/i.test(word)) {
                         status = 'in';
@@ -57,7 +57,7 @@
                     }
 
                     let isPhraseForOtherPlayer;
-                    words.slice(0, index).reverse().some(function (wordInPhrase) {
+                    words.slice(0, index).reverse().some(wordInPhrase => {
                         if (/[.!?;]$/.test(wordInPhrase)) {
                             return true;
                         }
