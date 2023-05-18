@@ -62,6 +62,7 @@
 
             if (fullyHydratedThreads.some(t => !t || t.startedOn !== fullyHydratedThreads[0].startedOn)) {
                 console.log('threads not valid', slackThreads, fullyHydratedThreads);
+                cachedGameStatus = emptyGameStatusObj();
                 return;
             }
 
