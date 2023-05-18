@@ -3,13 +3,15 @@
     const statusMaybe = 'maybe';
     const statusOut = 'out';
     const statusUnknown = 'unknown';
-    const emptyStatusNamesObj = () => ({
-        [statusIn]: [],
-        [statusMaybe]: [],
-        [statusOut]: [],
-        [statusUnknown]: []
+    const emptyGameStatusObj = () => ({
+        players: {
+            [statusIn]: [],
+            [statusMaybe]: [],
+            [statusOut]: [],
+            [statusUnknown]: []
+        }
     });
-    let cachedStatusNames = emptyStatusNamesObj();
+    let cachedGameStatus = emptyGameStatusObj();
 
     const cachedThreadMsgs = {};
 
@@ -64,7 +66,8 @@
             }
 
             const statusArrayByName = {};
-            fullyHydratedThreads.map(t => t.messages).flat().filter(msg => ![reminderMsgPrefix, scriptMsgPrefix].some(prefix => msg.text.startsWith(prefix))).forEach(msg => {
+            const messages = fullyHydratedThreads.map(t => t.messages).flat().filter(msg => ![reminderMsgPrefix, scriptMsgPrefix].some(prefix => msg.text.startsWith(prefix)));
+            messages.forEach(msg => {
                 const newStatus = msg.text.trim().replace(/\s|&nbsp;/gi, ' ').replace(/\u200B/g, '').split(' ').reduce((playerStatusArray, word, index, words) => {
                     let status;
                     if (/^in\W*$/i.test(word)) {
@@ -95,20 +98,25 @@
                 statusArrayByName[msg.from] = newStatus || statusArrayByName[msg.from] || statusUnknown;
             });
 
-            const statusNames = emptyStatusNamesObj();
-            Object.keys(statusArrayByName).sort().forEach(name => statusNames[statusArrayByName[name]].push(name));
+            const gameStatus = emptyGameStatusObj();
+            Object.keys(statusArrayByName).sort().forEach(name => gameStatus.players[statusArrayByName[name]].push(name));
 
-            if (JSON.stringify(cachedStatusNames) !== JSON.stringify(statusNames)) {
+            gameStatus.gameOnOff = messages.reduce((gameOnOff, m) => {
+                const match = m.text.match(/^game (on|off)/i);
+                return match ? `${match[0].toUpperCase()} has been called ${m.timestamp} by ${m.from}!` : gameOnOff;
+            }, '');
+
+            if (JSON.stringify(cachedGameStatus) !== JSON.stringify(gameStatus)) {
+                const statusNamesStrings = Object.entries(gameStatus.players).
+                    filter(([_, names]) => names.length).
+                    map(([status, names]) => `${status} (${names.length}): ${names.join(', ')}`);
+                const statusMsg = [`${scriptMsgPrefix} ${gameStatus.gameOnOff}`, ...statusNamesStrings].map(msgLine => `<p>${msgLine}</p>`).join('');
+
                 for (const tab of tabs) {
-                    const statusNamesStrings = Object.entries(statusNames).
-                        filter(([_, names]) => names.length).
-                        map(([status, names]) => `${status} (${names.length}): ${names.join(', ')}`);
-                    const statusMsg = [scriptMsgPrefix, ...statusNamesStrings].map(msgLine => `<p>${msgLine}</p>`).join('');
-
                     await executeScript(tab, slackSendMsg, [statusMsg, {selectorThreadPane}]);
                 }
 
-                cachedStatusNames = statusNames;
+                cachedGameStatus = gameStatus;
             }
         });
     });
@@ -124,9 +132,10 @@
 
     function slackGetThread(channelUrl, consts) {
         const getMsgCt = msg => msg.closest('.c-virtual_list__item');
-        const getMsgDay = msg => getMsgCt(msg).querySelector('.c-timestamp').getAttribute('aria-label').split(' ')[0];
+        const getMsgDay = msg => getMsgTimestamp(msg).split(' ')[0];
         const getMsgFrom = msg => getMsgCt(msg).querySelector('[data-qa="message_sender_name"]').textContent;
         const getMsgId = msg => getMsgCt(msg).getAttribute('data-item-key');
+        const getMsgTimestamp = msg => getMsgCt(msg).querySelector('.c-timestamp').getAttribute('aria-label');
         const querySelectorAll = selector => [...document.querySelectorAll(selector)];
 
         const selectorMsg = '.c-message_kit__blocks';
@@ -152,7 +161,8 @@
             messages: querySelectorAll(`${consts.selectorThreadPane} ${selectorMsg}`).map(msg => ({
                 from: getMsgFrom(msg),
                 id: getMsgId(msg),
-                text: msg.textContent
+                text: msg.textContent,
+                timestamp: getMsgTimestamp(msg)
             })),
             startedOn: getMsgDay(threadStarter)
         };
