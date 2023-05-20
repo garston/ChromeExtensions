@@ -30,14 +30,10 @@
             const reminderMsgPrefix = `Reminder: ${scriptMsgPrefix}`;
             const selectorThreadPane = '.p-workspace__secondary_view';
 
-            const slackThreads = [];
-            for (const tab of tabs) {
-                const channelUrl = tab.url.split('/').slice(0, 6).join('/');
-                slackThreads.push(await executeScript(tab, slackGetThread, [channelUrl, {
-                    reminderMsgPrefix,
-                    selectorThreadPane
-                }]));
-            }
+            const slackThreads = await executeScript(tabs, slackGetThread, [{
+                reminderMsgPrefix,
+                selectorThreadPane
+            }]);
 
             const fullyHydratedThreads = slackThreads.map(t => {
                 if (!t) {
@@ -112,26 +108,27 @@
                     filter(([_, names]) => names.length).
                     map(([status, names]) => `${status} (${names.length}): ${names.join(', ')}`);
                 const statusMsg = [`${scriptMsgPrefix} ${gameStatus.gameOnOff}`, ...statusNamesStrings].map(msgLine => `<p>${msgLine}</p>`).join('');
-
-                for (const tab of tabs) {
-                    await executeScript(tab, slackSendMsg, [statusMsg, {selectorThreadPane}]);
-                }
+                await executeScript(tabs, slackSendMsg, [statusMsg, {selectorThreadPane}]);
 
                 cachedGameStatus = gameStatus;
             }
         });
     });
 
-    async function executeScript(tab, func, args) {
-        await chrome.tabs.update(tab.id, {active: true}); // new messages aren't rendered until Slack has focus
-        return (await new Promise(resolve => chrome.scripting.executeScript({
-            args,
-            func,
-            target: {tabId: tab.id}
-        }, resolve)))[0].result;
+    async function executeScript(tabs, func, args) {
+        const results = [];
+        for (const tab of tabs) {
+            await chrome.tabs.update(tab.id, {active: true}); // new messages aren't rendered until Slack has focus
+            results.push((await new Promise(resolve => chrome.scripting.executeScript({
+                args,
+                func,
+                target: {tabId: tab.id}
+            }, resolve)))[0].result);
+        }
+        return results;
     }
 
-    function slackGetThread(channelUrl, consts) {
+    function slackGetThread(consts) {
         const getMsgCt = msg => msg.closest('.c-virtual_list__item');
         const getMsgDay = msg => getMsgTimestamp(msg).split(' ')[0];
         const getMsgFrom = msg => getMsgCt(msg).querySelector('[data-qa="message_sender_name"]').textContent;
@@ -150,7 +147,7 @@
         }
 
         const id = getMsgId(threadStarter);
-        if (window.location.href !== `${channelUrl}/thread/${channelUrl.split('/').slice(-1)[0]}-${id}`) {
+        if (!window.location.href.endsWith(id)) {
             // need to navigate to thread by clicking b/c setting window.location.href will cause Slack to redirect to channel URL when thread has no messages
             threadStarter.dispatchEvent(new MouseEvent('mouseover', {'bubbles': true}));
             getMsgCt(threadStarter).querySelector('[data-qa="start_thread"]').click();
