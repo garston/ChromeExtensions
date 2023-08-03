@@ -105,6 +105,8 @@
             }, '');
 
             if (JSON.stringify(cachedGameStatus) !== JSON.stringify(gameStatus)) {
+                console.log('game status changed', fullyHydratedThreads, cachedGameStatus, gameStatus);
+
                 const statusNamesStrings = Object.entries(gameStatus.players).
                     filter(([_, names]) => names.length).
                     map(([status, names]) => `${status} (${names.length}): ${names.join(', ')}`);
