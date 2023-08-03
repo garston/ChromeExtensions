@@ -1,35 +1,36 @@
 (() => {
-    const statusIn = 'in';
-    const statusMaybe = 'maybe';
-    const statusOut = 'out';
-    const statusUnknown = 'unknown';
-    const emptyGameStatusObj = () => ({
-        players: {
-            [statusIn]: [],
-            [statusMaybe]: [],
-            [statusOut]: [],
-            [statusUnknown]: []
-        }
-    });
-    let cachedGameStatus = emptyGameStatusObj();
+    (() => {
+        const statusIn = 'in';
+        const statusMaybe = 'maybe';
+        const statusOut = 'out';
+        const statusUnknown = 'unknown';
+        const emptyGameStatusObj = () => ({
+            players: {
+                [statusIn]: [],
+                [statusMaybe]: [],
+                [statusOut]: [],
+                [statusUnknown]: []
+            }
+        });
+        let cachedGameStatus = emptyGameStatusObj();
 
-    const cachedThreadMsgs = {};
+        const cachedThreadMsgs = {};
 
-    const scriptName = 'PhysEd';
-    chrome.alarms.create(scriptName, {
-        delayInMinutes: 0,
-        periodInMinutes: 1
-    });
-    chrome.alarms.onAlarm.addListener(alarm => {
-        if (alarm.name !== scriptName) {
-            return;
-        }
+        const scriptName = 'PhysEd';
+        chrome.alarms.create(scriptName, {
+            delayInMinutes: 0,
+            periodInMinutes: 1
+        });
+        chrome.alarms.onAlarm.addListener(async (alarm) => {
+            if (alarm.name !== scriptName) {
+                return;
+            }
 
-        chrome.tabs.query({url: 'https://app.slack.com/*'}, async (tabs) => {
             const scriptMsgPrefix = `${scriptName} -`
             const reminderMsgPrefix = `Reminder: ${scriptMsgPrefix}`;
             const selectorThreadPane = '.p-workspace__secondary_view';
 
+            const tabs = await chrome.tabs.query({url: 'https://app.slack.com/*'});
             const slackThreads = await executeScript(tabs, slackGetThread, [{
                 reminderMsgPrefix,
                 selectorThreadPane
@@ -113,20 +114,20 @@
                 cachedGameStatus = gameStatus;
             }
         });
-    });
 
-    async function executeScript(tabs, func, args) {
-        const results = [];
-        for (const tab of tabs) {
-            await chrome.tabs.update(tab.id, {active: true}); // new messages aren't rendered until Slack has focus
-            results.push((await new Promise(resolve => chrome.scripting.executeScript({
-                args,
-                func,
-                target: {tabId: tab.id}
-            }, resolve)))[0].result);
+        async function executeScript(tabs, func, args) {
+            const results = [];
+            for (const tab of tabs) {
+                await chrome.tabs.update(tab.id, {active: true}); // new messages aren't rendered until Slack has focus
+                results.push((await new Promise(resolve => chrome.scripting.executeScript({
+                    args,
+                    func,
+                    target: {tabId: tab.id}
+                }, resolve)))[0].result);
+            }
+            return results;
         }
-        return results;
-    }
+    })();
 
     function slackGetThread(consts) {
         const getMsgCt = msg => msg.closest('.c-virtual_list__item');
