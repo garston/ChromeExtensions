@@ -31,12 +31,12 @@
             const selectorThreadPane = '.p-workspace__secondary_view';
 
             const tabs = await chrome.tabs.query({url: 'https://app.slack.com/*'});
-            const slackThreads = await executeScript(tabs, slackGetThread, [{
+            const threads = await executeScript(tabs, slackGetThread, [{
                 reminderMsgPrefix,
                 selectorThreadPane
             }]);
 
-            const fullyHydratedThreads = slackThreads.map(t => {
+            const threadMsgs = threads.map(t => {
                 if (!t) {
                     return;
                 }
@@ -50,21 +50,18 @@
 
                 if (messages[0].id === t.id) {
                     cachedThreadMsgs[t.id] = messages;
-                    return {
-                        ...t,
-                        messages
-                    };
+                    return messages;
                 }
             });
 
-            if (fullyHydratedThreads.some(t => !t || t.startedOn !== fullyHydratedThreads[0].startedOn)) {
-                console.log('threads not valid', slackThreads, fullyHydratedThreads);
+            if (threadMsgs.some(t => !t)) {
+                console.log('not all tabs are ready', threads, threadMsgs);
                 cachedGameStatus = emptyGameStatusObj();
                 return;
             }
 
             const statusArrayByName = {};
-            const messages = fullyHydratedThreads.map(t => t.messages).flat().filter(msg => ![reminderMsgPrefix, scriptMsgPrefix].some(prefix => msg.text.startsWith(prefix)));
+            const messages = threadMsgs.flat().filter(msg => ![reminderMsgPrefix, scriptMsgPrefix].some(prefix => msg.text.startsWith(prefix)));
             messages.forEach(msg => {
                 const newStatus = msg.text.trim().replace(/\s|&nbsp;/gi, ' ').replace(/\u200B/g, '').split(' ').reduce((playerStatusArray, word, index, words) => {
                     let status;
@@ -105,7 +102,7 @@
             }, '');
 
             if (JSON.stringify(cachedGameStatus) !== JSON.stringify(gameStatus)) {
-                console.log('game status changed', fullyHydratedThreads, cachedGameStatus, gameStatus);
+                console.log('game status changed', threadMsgs, cachedGameStatus, gameStatus);
 
                 const statusNamesStrings = Object.entries(gameStatus.players).
                     filter(([_, names]) => names.length).
@@ -133,17 +130,14 @@
 
     function slackGetThread(consts) {
         const getMsgCt = msg => msg.closest('.c-virtual_list__item');
-        const getMsgDay = msg => getMsgTimestamp(msg).split(' ')[0];
         const getMsgFrom = msg => getMsgCt(msg).querySelector('[data-qa="message_sender_name"]').textContent;
         const getMsgId = msg => getMsgCt(msg).getAttribute('data-item-key');
-        const getMsgTimestamp = msg => getMsgCt(msg).querySelector('.c-timestamp').getAttribute('aria-label');
         const querySelectorAll = selector => [...document.querySelectorAll(selector)];
 
         const selectorMsg = '.c-message_kit__blocks';
         const [threadStarter] = querySelectorAll(`.p-workspace__primary_view ${selectorMsg}`).filter(msg =>
             msg.textContent.startsWith(consts.reminderMsgPrefix) &&
-            getMsgFrom(msg) === 'Slackbot' &&
-            ['Today', 'Yesterday'].includes(getMsgDay(msg))
+            getMsgFrom(msg) === 'Slackbot'
         ).slice(-1);
         if (!threadStarter) {
             return;
@@ -163,9 +157,8 @@
                 from: getMsgFrom(msg),
                 id: getMsgId(msg),
                 text: msg.textContent,
-                timestamp: getMsgTimestamp(msg)
-            })),
-            startedOn: getMsgDay(threadStarter)
+                timestamp: getMsgCt(msg).querySelector('.c-timestamp').getAttribute('aria-label')
+            }))
         };
     }
 
