@@ -5,6 +5,7 @@
         const statusOut = 'out';
         const statusUnknown = 'unknown';
         const emptyGameStatusObj = () => ({
+            gameOnOff: '',
             players: {
                 [statusIn]: [],
                 [statusMaybe]: [],
@@ -99,7 +100,7 @@
             gameStatus.gameOnOff = messages.reduce((gameOnOff, m) => {
                 const match = m.text.match(/^game (on|off)/i);
                 return match ? `${match[0].toUpperCase()} has been called ${m.timestamp} by ${m.from}!` : gameOnOff;
-            }, '');
+            }, gameStatus.gameOnOff);
 
             if (JSON.stringify(cachedGameStatus) !== JSON.stringify(gameStatus)) {
                 console.log('game status changed', threadMsgs, cachedGameStatus, gameStatus);
