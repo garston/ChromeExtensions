@@ -13,9 +13,23 @@
                 [statusUnknown]: []
             }
         });
-        let cachedGameStatus = emptyGameStatusObj();
 
-        const cachedThreadMsgs = {};
+        async function executeScript(tabs, func, args) {
+            const results = [];
+            for (const tab of tabs) {
+                await chrome.tabs.update(tab.id, {active: true}); // new messages aren't rendered until Slack has focus
+                results.push((await new Promise(resolve => chrome.scripting.executeScript({
+                    args,
+                    func,
+                    target: {tabId: tab.id}
+                }, resolve)))[0].result);
+            }
+            return results;
+        }
+
+        const objectsEqual = (o1, o2) => JSON.stringify(o1) === JSON.stringify(o2);
+
+        let state;
 
         const scriptName = 'PhysEd';
         chrome.alarms.create(scriptName, {
@@ -37,29 +51,29 @@
                 selectorThreadPane
             }]);
 
-            const threadMsgs = threads.map(t => {
-                if (!t) {
-                    return;
-                }
+            if (threads.some(t => !t)) {
+                console.log('not all tabs are ready', threads);
+                return;
+            }
 
-                const existingMsgs = cachedThreadMsgs[t.id];
-                let {messages} = t;
+            if (!state || !objectsEqual(Object.keys(state.threadMsgs).sort(), threads.map(t => t.id).sort())) {
+                console.log('navigated to new thread(s)', state?.threadMsgs, threads);
+                state = {
+                    gameStatus: emptyGameStatusObj(),
+                    threadMsgs: {}
+                };
+            }
+
+            const threadMsgs = threads.map(({id, messages}) => {
+                const existingMsgs = state.threadMsgs[id];
                 if (existingMsgs) {
                     const newMsgsIndex = existingMsgs.findIndex(m => m.id === messages[0].id);
                     messages = [...existingMsgs.slice(0, newMsgsIndex === -1 ? undefined : newMsgsIndex), ...messages];
                 }
 
-                if (messages[0].id === t.id) {
-                    cachedThreadMsgs[t.id] = messages;
-                    return messages;
-                }
+                state.threadMsgs[id] = messages;
+                return messages;
             });
-
-            if (threadMsgs.some(t => !t)) {
-                console.log('not all tabs are ready', threads, threadMsgs);
-                cachedGameStatus = emptyGameStatusObj();
-                return;
-            }
 
             const statusArrayByName = {};
             const messages = threadMsgs.flat().filter(msg => ![reminderMsgPrefix, scriptMsgPrefix].some(prefix => msg.text.startsWith(prefix)));
@@ -102,8 +116,8 @@
                 return match ? `${match[0].toUpperCase()} has been called ${m.timestamp} by ${m.from}!` : gameOnOff;
             }, gameStatus.gameOnOff);
 
-            if (JSON.stringify(cachedGameStatus) !== JSON.stringify(gameStatus)) {
-                console.log('game status changed', threadMsgs, cachedGameStatus, gameStatus);
+            if (!objectsEqual(state.gameStatus, gameStatus)) {
+                console.log('game status changed', threadMsgs, state.gameStatus, gameStatus);
 
                 const statusNamesStrings = Object.entries(gameStatus.players).
                     filter(([_, names]) => names.length).
@@ -111,22 +125,9 @@
                 const statusMsg = [`${scriptMsgPrefix} ${gameStatus.gameOnOff}`, ...statusNamesStrings].map(msgLine => `<p>${msgLine}</p>`).join('');
                 await executeScript(tabs, slackSendMsg, [statusMsg, {selectorThreadPane}]);
 
-                cachedGameStatus = gameStatus;
+                state.gameStatus = gameStatus;
             }
         });
-
-        async function executeScript(tabs, func, args) {
-            const results = [];
-            for (const tab of tabs) {
-                await chrome.tabs.update(tab.id, {active: true}); // new messages aren't rendered until Slack has focus
-                results.push((await new Promise(resolve => chrome.scripting.executeScript({
-                    args,
-                    func,
-                    target: {tabId: tab.id}
-                }, resolve)))[0].result);
-            }
-            return results;
-        }
     })();
 
     function slackGetThread(consts) {
