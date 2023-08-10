@@ -27,21 +27,19 @@
                 return;
             }
 
-            const navigatingToThread = null;
             const scriptMsgPrefix = `${scriptName} -`
             const reminderMsgPrefix = `Reminder: ${scriptMsgPrefix}`;
             const selectorThreadPane = '.p-workspace__secondary_view';
 
             const tabs = await chrome.tabs.query({url: 'https://app.slack.com/*'});
             const threads = await executeScript(tabs, slackGetThread, [{
-                navigatingToThread,
                 reminderMsgPrefix,
                 selectorThreadPane
             }]);
 
             const threadMsgs = threads.map(t => {
                 if (!t) {
-                    return t;
+                    return;
                 }
 
                 const existingMsgs = cachedThreadMsgs[t.id];
@@ -59,9 +57,7 @@
 
             if (threadMsgs.some(t => !t)) {
                 console.log('not all tabs are ready', threads, threadMsgs);
-                if (threadMsgs.includes(navigatingToThread)) {
-                    cachedGameStatus = emptyGameStatusObj();
-                }
+                cachedGameStatus = emptyGameStatusObj();
                 return;
             }
 
@@ -153,7 +149,7 @@
             // need to navigate to thread by clicking b/c setting window.location.href will cause Slack to redirect to channel URL when thread has no messages
             threadStarter.dispatchEvent(new MouseEvent('mouseover', {'bubbles': true}));
             getMsgCt(threadStarter).querySelector('[data-qa="start_thread"]').click();
-            return consts.navigatingToThread;
+            return;
         }
 
         return {
