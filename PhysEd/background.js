@@ -43,7 +43,7 @@
 
             const scriptMsgPrefix = `${scriptName} -`
             const reminderMsgPrefix = `Reminder: ${scriptMsgPrefix}`;
-            const selectorThreadPane = '.p-workspace__secondary_view';
+            const selectorThreadPane = '.p-view_contents--secondary';
 
             const tabs = await chrome.tabs.query({url: 'https://app.slack.com/*'});
             const threads = await executeScript(tabs, slackGetThread, [{
@@ -131,37 +131,35 @@
     })();
 
     function slackGetThread(consts) {
-        const getMsgCt = msg => msg.closest('.c-virtual_list__item');
-        const getMsgFrom = msg => getMsgCt(msg).querySelector('[data-qa="message_sender_name"]').textContent;
-        const getMsgId = msg => getMsgCt(msg).getAttribute('data-item-key');
-        const querySelectorAll = selector => [...document.querySelectorAll(selector)];
+        const getMessages = paneSelector =>
+            [...document.querySelectorAll(`${paneSelector} .c-message_kit__blocks`)].map(textEl => {
+                const el = textEl.closest('.c-virtual_list__item');
+                return ({
+                    el,
+                    from: el.querySelector('[data-qa="message_sender_name"]').textContent,
+                    id: el.getAttribute('data-item-key'),
+                    text: textEl.textContent,
+                    textEl,
+                    timestamp: el.querySelector('.c-timestamp').getAttribute('aria-label')
+                });
+            });
 
-        const selectorMsg = '.c-message_kit__blocks';
-        const [threadStarter] = querySelectorAll(`.p-workspace__primary_view ${selectorMsg}`).filter(msg =>
-            msg.textContent.startsWith(consts.reminderMsgPrefix) &&
-            getMsgFrom(msg) === 'Slackbot'
+        const [msg] = getMessages('.p-view_contents--primary').filter(m =>
+            m.from === 'Slackbot' && m.text.startsWith(consts.reminderMsgPrefix)
         ).slice(-1);
-        if (!threadStarter) {
+        if (!msg) {
             return;
         }
 
-        const id = getMsgId(threadStarter);
-        if (!window.location.href.endsWith(id)) {
-            // need to navigate to thread by clicking b/c setting window.location.href will cause Slack to redirect to channel URL when thread has no messages
-            threadStarter.dispatchEvent(new MouseEvent('mouseover', {'bubbles': true}));
-            getMsgCt(threadStarter).querySelector('[data-qa="start_thread"]').click();
+        const {id} = msg;
+        const messages = getMessages(consts.selectorThreadPane);
+        if (!messages[0]?.el.id.includes(id)) {
+            msg.textEl.dispatchEvent(new MouseEvent('mouseover', {'bubbles': true}));
+            msg.el.querySelector('[data-qa="start_thread"]').click();
             return;
         }
 
-        return {
-            id,
-            messages: querySelectorAll(`${consts.selectorThreadPane} ${selectorMsg}`).map(msg => ({
-                from: getMsgFrom(msg),
-                id: getMsgId(msg),
-                text: msg.textContent,
-                timestamp: getMsgCt(msg).querySelector('.c-timestamp').getAttribute('aria-label')
-            }))
-        };
+        return {id, messages};
     }
 
     async function slackSendMsg(msg, consts) {
