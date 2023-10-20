@@ -29,6 +29,7 @@
 
         const objectsEqual = (o1, o2) => JSON.stringify(o1) === JSON.stringify(o2);
 
+        let numExecutions = 0;
         let state;
 
         const scriptName = 'PhysEd';
@@ -40,6 +41,8 @@
             if (alarm.name !== scriptName) {
                 return;
             }
+
+            numExecutions++;
 
             const scriptMsgPrefix = `${scriptName} -`
             const reminderMsgPrefix = `Reminder: ${scriptMsgPrefix}`;
@@ -123,7 +126,11 @@
                     filter(([_, names]) => names.length).
                     map(([status, names]) => `${status} (${names.length}): ${names.join(', ')}`);
                 const statusMsg = [`${scriptMsgPrefix} ${gameStatus.gameOnOff}`, ...statusNamesStrings].map(msgLine => `<p>${msgLine}</p>`).join('');
-                await executeScript(tabs, slackSendMsg, [statusMsg, {selectorThreadPane}]);
+                if (numExecutions === 1) {
+                    console.log('script just (re)loaded, not posting', statusMsg);
+                } else {
+                    await executeScript(tabs, slackSendMsg, [statusMsg, {selectorThreadPane}]);
+                }
 
                 state.gameStatus = gameStatus;
             }
